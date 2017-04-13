@@ -43,15 +43,19 @@ path = "src/terminal/main.rs"
 name = "viewer"
 path = "src/viewer/main.rs"
 
+[[bin]]
+name = "task_manager"
+path = "src/task_manager/main.rs"
+
 [dependencies]
 html5ever = "0.12"
 html5ever-atoms = "0.1"
 mime_guess = "1.8"
 mime = "0.2"
-orbclient = "0.3"
+orbclient = "0.3.3"
 orbfont = "0.1"
 orbimage = "0.1"
-orbtk = "0.2"
+orbtk = "0.2.17"
 ransid = "0.2"
 rustls = "0.5"
 tendril = "0.2"
