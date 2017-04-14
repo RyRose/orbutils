@@ -3,9 +3,11 @@
 extern crate orbclient;
 extern crate orbtk;
 
+use std::fs;
+use std::io::Read;
 use orbclient::WindowFlag;
-use orbtk::{Action, Menu, Point, Rect, Separator, TextBox, Window};
-use orbtk::traits::{Click, Place, Resize};
+use orbtk::{Action, Menu, Point, Rect, Separator, TextBox, Window, Button};
+use orbtk::traits::{Click, Place, Resize, Text};
 
 use std::{cmp};
 
@@ -21,6 +23,25 @@ fn main(){
     text_box.position(0, 16)
         .size(width, height - 16);
     window.add(&text_box);
+
+    let refresh_button = Button::new();
+    refresh_button.position(32, 0)
+        .size(64, 16)
+        .text("Refresh")
+        .text_offset(4, 0);
+
+    {
+        let text_box_clone = text_box.clone();
+        refresh_button.on_click(move |_, _| {
+            let mut f = fs::File::open("sys:/context").unwrap();
+            let mut s = String::new();
+            let _ = f.read_to_string(&mut s);
+            text_box_clone.text.set(s);
+        });
+    }
+
+    window.add(&refresh_button);
+
 
     let menu = Menu::new("File");
     menu.position(0, 0).size(32, 16);
