@@ -1,4 +1,4 @@
-#![deny(warnings)]
+// #![deny(warnings)]
 
 extern crate orbclient;
 extern crate orbtk;
@@ -10,6 +10,12 @@ use orbtk::{Action, Menu, Point, Rect, Separator, TextBox, Window, Button};
 use orbtk::traits::{Click, Place, Resize, Text};
 
 use std::{cmp};
+
+#[cfg(target_os = "redox")]
+static PROCESS_INFO: &'static str = "sys:/context";
+
+#[cfg(not(target_os = "redox"))]
+static PROCESS_INFO: &'static str = "tst/task_manager/ps_output.txt";
 
 fn main(){
     let title = format!("Task Manager");
@@ -33,7 +39,7 @@ fn main(){
     {
         let text_box_clone = text_box.clone();
         refresh_button.on_click(move |_, _| {
-            let mut f = fs::File::open("sys:/context").unwrap();
+            let mut f = fs::File::open(PROCESS_INFO).unwrap();
             let mut s = String::new();
             let _ = f.read_to_string(&mut s);
             text_box_clone.text.set(s);

@@ -1,0 +1,27 @@
+PID   PPID  RUID  RGID  RNS   EUID  EGID  ENS   STAT  CPU   MEM     NAME
+1     0     0     0     0     0     0     0     KR    0     0 B
+2     0     0     0     0     0     0     0     UB    0     1 MB    initfs:/bin/init
+4     2     0     0     0     0     0     0     UB    0     5 MB    initfs:/bin/vesad
+6     2     0     0     0     0     0     0     UB    0     1 MB    initfs:/bin/ps2d
+9     2     0     0     0     0     0     0     KZ    0     128 KB  initfs:/bin/bgad
+11    2     0     0     0     0     0     0     UB    0     1 MB    initfs:/bin/ahcid
+13    2     0     0     0     0     0     0     UB    0     17 MB   initfs:/bin/redoxfs
+15    2     0     0     0     0     0     0     UB    0     1 MB    file:/sbin/randd
+17    2     0     0     0     0     0     0     UB    0     1 MB    file:/sbin/ptyd
+20    2     0     0     0     0     0     0     UB    0     1 MB    file:/sbin/e1000d
+24    2     0     0     0     0     0     0     UB    0     1 MB    file:/sbin/ethernetd
+26    2     0     0     0     0     0     0     UB    0     1 MB    file:/sbin/ipd
+28    2     0     0     0     0     0     0     UB    0     1 MB    file:/sbin/tcpd
+30    2     0     0     0     0     0     0     UB    0     1 MB    file:/sbin/udpd
+34    2     0     0     0     0     0     0     UB    0     11 MB   file:/sbin/orbital
+36    2     0     0     0     0     0     0     UB    0     1 MB    file:/bin/getty
+37    36    0     0     0     0     0     0     UB    0     1 MB    file:/bin/login
+39    2     0     0     0     0     0     0     UB    0     1 MB    file:/bin/getty
+40    39    0     0     0     0     0     0     UB    0     1 MB    file:/bin/login
+41    34    0     0     0     0     0     0     UB    0     2 MB    file:/ui/bin/orblogin
+42    34    0     0     0     0     0     0     UB    0     11 MB   file:/sbin/orbital
+43    41    1000  1000  0     1000  1000  0     UB    0     2 MB    file:/ui/bin/launcher
+44    43    1000  1000  0     1000  1000  0     UB    0     1 MB    file:/ui/bin/terminal
+45    44    1000  1000  0     1000  1000  0     UB    0     2 MB    file:/bin/sh
+48    40    1000  1000  0     1000  1000  0     UR    0     2 MB    file:/bin/ion
+83    48    1000  1000  0     1000  1000  0     UR+   0     1 MB    file:/bin/ps
