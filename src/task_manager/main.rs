@@ -1,5 +1,7 @@
 // #![deny(warnings)]
 
+use std::str::FromStr;
+
 extern crate orbclient;
 extern crate orbtk;
 
@@ -14,12 +16,15 @@ use std::sync::Arc;
 use std::{cmp};
 
 #[cfg(target_os = "redox")]
+extern crate syscall;
+
+#[cfg(target_os = "redox")]
 static PROCESS_INFO: &'static str = "sys:/context";
 
 #[cfg(not(target_os = "redox"))]
 static PROCESS_INFO: &'static str = "tst/task_manager/ps_output.txt";
 
-const ITEM_SIZE: i32 = 32;
+const ITEM_SIZE: i32 = 16;
 
 struct ProcessInfo {
     pid : String,
@@ -45,7 +50,7 @@ struct Column {
 
 struct TaskManager {
     processes : Vec<ProcessInfo>,
-    columns : [Column; 1],
+    columns : [Column; 2],
     column_labels: Vec<Arc<Label>>,
     window: Window,
     window_width: u32,
@@ -61,24 +66,6 @@ impl TaskManager {
         let (width, height) = (cmp::min(1024, display_width * 4/5), cmp::min(768, display_height * 4/5));
 
         let mut window = Window::new_flags(Rect::new(-1, -1, width, height), &title, &[WindowFlag::Resizable]);
-
-        let refresh_button = Button::new();
-        refresh_button.position(32, 0)
-            .size(64, 16)
-            .text("Refresh")
-            .text_offset(4, 0);
-
-        /* {
-            let text_box = text_box.clone();
-            refresh_button.on_click(move |_, _| {
-                let mut f = fs::File::open(PROCESS_INFO).unwrap();
-                let mut s = String::new();
-                let _ = f.read_to_string(&mut s);
-                text_box.text.set(s);
-            });
-        } */
-
-        window.add(&refresh_button);
 
         let menu = Menu::new("File");
         menu.position(0, 0).size(32, 16);
@@ -102,6 +89,11 @@ impl TaskManager {
                     name: "PID",
                     x: 0,
                     width: 0,
+                },
+                Column {
+                    name: "Name",
+                    x : 0,
+                    width: 0
                 }
             ],
             column_labels: Vec::new(),
@@ -112,13 +104,15 @@ impl TaskManager {
         }
     }
 
-    fn resized_columns(&self) -> [Column; 1] {
+    fn resized_columns(&self) -> [Column; 2] {
         let mut columns = self.columns.clone();
         columns[0].width = cmp::max(
             columns[0].width,
             self.window_width as i32
                 - columns[0].x
+                - columns[1].width
         );
+        columns[1].x = columns[0].x + columns[0].width;
         columns
     }
 
@@ -139,9 +133,19 @@ impl TaskManager {
             let entry = Entry::new(ITEM_SIZE as u32);
             let mut label = Label::new();
             label.position(columns[0].x, 0).size(w, ITEM_SIZE as u32).text(process.pid.clone());
-            label.text_offset.set(Point::new(0, 8));
             label.bg.set(Color::rgba(255, 255, 255, 0));
             entry.add(&label);
+
+            let mut label = Label::new();
+            label.position(columns[1].x, 0).size(w, ITEM_SIZE as u32).text(process.name.clone());
+            label.text_offset.set(Point::new(0, 8));
+            label.bg.set(Color::rgba(255, 255, 255, 0));
+
+            let pid = process.pid.clone();
+            entry.on_click(move |_, _| {
+                kill_pid(&pid);
+            });
+
             list.push(&entry);
         }
 
@@ -193,10 +197,20 @@ impl TaskManager {
             column.width = (column.name.len() * 8) as i32 + 16;
         }
 
+        self.update_processes();
+        self.redraw();
+
+        let mut i = 0;
         while self.window.running.get() {
             self.window.step();
-            self.update_processes();
-            self.redraw();
+
+            i += 1;
+            if i == 100 {
+                i = 0;
+                self.update_processes();
+                self.redraw();
+            }
+
             self.window.draw_if_needed();
         }
     }
@@ -218,6 +232,17 @@ fn get_process_info(line : String) -> ProcessInfo {
         mem : format!("{} {}", split_up[10].clone(), split_up[11].clone()),
         name : split_up[11].clone(),
     }
+}
+
+#[cfg(target_os="redox")]
+fn kill_pid(pid: &String) {
+    println!("Killed pid: {}", pid);
+    syscall::kill(usize::from_str(pid.as_str()).unwrap(), 0x9).unwrap();
+}
+
+#[cfg(not(target_os="redox"))]
+fn kill_pid(pid: &String) {
+    println!("Not implemented on redox. Killed pid: {}", pid);
 }
 
 fn main(){
