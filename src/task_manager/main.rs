@@ -7,6 +7,9 @@ extern crate orbtk;
 
 use std::fs;
 use std::io::Read;
+use std::sync::mpsc::{channel, Sender, Receiver};
+use std::time::Duration;
+use std::thread;
 use orbclient::{Color, Renderer, WindowFlag};
 use orbtk::{Action, Menu, Point, Rect, List, Entry, Label, Separator, TextBox, Window, Button};
 use orbtk::traits::{Click, Place, Resize, Text};
@@ -41,7 +44,12 @@ struct ProcessInfo {
     name : String
 }
 
-#[derive(Clone, Copy)]
+enum TaskManagerCommand {
+    Resize(u32, u32),
+    Update(Vec<ProcessInfo>)
+}
+
+#[derive(Clone, Copy, Debug)]
 struct Column {
     name: &'static str,
     x: i32,
@@ -56,10 +64,13 @@ struct TaskManager {
     window_width: u32,
     window_height: u32,
     list_widget_index: Option<usize>,
+    tx: Sender<TaskManagerCommand>,
+    rx: Receiver<TaskManagerCommand>,
 }
 
 impl TaskManager {
     pub fn new() -> Self {
+        let (tx, rx) = channel();
         let title = "Task Manager";
 
         let (display_width, display_height) = orbclient::get_display_size().expect("viewer: failed to get display size");
@@ -67,40 +78,32 @@ impl TaskManager {
 
         let mut window = Window::new_flags(Rect::new(-1, -1, width, height), &title, &[WindowFlag::Resizable]);
 
-        let menu = Menu::new("File");
-        menu.position(0, 0).size(32, 16);
-
-        menu.add(&Separator::new());
-
-        let close_action = Action::new("Close");
-        let window_close = &mut window as *mut Window;
-        close_action.on_click(move |_action: &Action, _point: Point| {
-            println!("Close");
-            unsafe { (&mut *window_close).close(); }
+        let tx_resize = tx.clone();
+        window.on_resize(move |_window, width, height| {
+            tx_resize.send(TaskManagerCommand::Resize(width, height)).unwrap();
         });
-        menu.add(&close_action);
-
-        window.add(&menu);
 
         TaskManager {
             processes: Vec::new(),
             columns : [
                 Column {
-                    name: "PID",
-                    x: 0,
-                    width: 0,
-                },
-                Column {
                     name: "Name",
                     x : 0,
                     width: 0
+                },
+                Column {
+                    name: "PID",
+                    x: 0,
+                    width: 48,
                 }
             ],
             column_labels: Vec::new(),
             window: window,
             window_width: width as u32,
             window_height: height as u32,
-            list_widget_index : None
+            list_widget_index : None,
+            tx : tx,
+            rx : rx
         }
     }
 
@@ -109,7 +112,6 @@ impl TaskManager {
         columns[0].width = cmp::max(
             columns[0].width,
             self.window_width as i32
-                - columns[0].x
                 - columns[1].width
         );
         columns[1].x = columns[0].x + columns[0].width;
@@ -131,15 +133,16 @@ impl TaskManager {
 
         for process in self.processes.iter() {
             let entry = Entry::new(ITEM_SIZE as u32);
+
             let mut label = Label::new();
-            label.position(columns[0].x, 0).size(w, ITEM_SIZE as u32).text(process.pid.clone());
+            label.position(columns[0].x, 0).size(w, ITEM_SIZE as u32).text(process.name.clone());
             label.bg.set(Color::rgba(255, 255, 255, 0));
             entry.add(&label);
 
-            let mut label = Label::new();
-            label.position(columns[1].x, 0).size(w, ITEM_SIZE as u32).text(process.name.clone());
-            label.text_offset.set(Point::new(0, 8));
+            label = Label::new();
+            label.position(columns[1].x, 0).size(w, ITEM_SIZE as u32).text(process.pid.clone());
             label.bg.set(Color::rgba(255, 255, 255, 0));
+            entry.add(&label);
 
             let pid = process.pid.clone();
             entry.on_click(move |_, _| {
@@ -178,42 +181,50 @@ impl TaskManager {
         }
     }
 
-    fn update_processes(&mut self) {
-        let mut f = fs::File::open(PROCESS_INFO).unwrap();
-        let mut s = String::new();
-        let _ = f.read_to_string(&mut s);
-        self.processes.clear();
-
-        let mut lines : Vec<String> = s.split("\n").map(|s| String::from(s)).collect();
-        for (i, line) in lines.into_iter().enumerate() {
-            if i != 0 && line.len() > 0 {
-                self.processes.push(get_process_info(line));
-            }
-        }
-    }
-
     pub fn main(&mut self) {
-        for column in self.columns.iter_mut() {
-            column.width = (column.name.len() * 8) as i32 + 16;
-        }
+        let tx_refresh = self.tx.clone();
+        thread::spawn(move || {
+            loop {
+                tx_refresh.send(TaskManagerCommand::Update(get_processes())).unwrap();
+                thread::sleep(Duration::new(2, 0));
+            }
+        });
 
-        self.update_processes();
+        self.processes = get_processes();
         self.redraw();
 
-        let mut i = 0;
         while self.window.running.get() {
             self.window.step();
 
-            i += 1;
-            if i == 100 {
-                i = 0;
-                self.update_processes();
+            while let Ok(event) = self.rx.try_recv() {
+                match event {
+                    TaskManagerCommand::Resize(width, height) => {
+                        self.window_width = width;
+                        self.window_height = height;
+                    },
+                    TaskManagerCommand::Update(processes) => {
+                        println!("update");
+                        self.processes = processes;
+                    }
+                }
                 self.redraw();
             }
 
             self.window.draw_if_needed();
         }
     }
+}
+
+fn get_processes() -> Vec<ProcessInfo> {
+    let mut f = fs::File::open(PROCESS_INFO).unwrap();
+    let mut s = String::new();
+    let _ = f.read_to_string(&mut s);
+    s.split("\n")
+        .filter(|s| s.len() > 0)
+        .map(|s| String::from(s))
+        .skip(1)
+        .map(get_process_info)
+        .collect()
 }
 
 fn get_process_info(line : String) -> ProcessInfo {
@@ -230,7 +241,7 @@ fn get_process_info(line : String) -> ProcessInfo {
         stat : split_up[8].clone(),
         cpu : split_up[9].clone(),
         mem : format!("{} {}", split_up[10].clone(), split_up[11].clone()),
-        name : split_up[11].clone(),
+        name : if split_up.len() > 12 { split_up[12].clone() } else {String::from("N/A")},
     }
 }
 
