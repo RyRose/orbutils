@@ -58,7 +58,7 @@ struct Column {
 
 struct TaskManager {
     processes : Vec<ProcessInfo>,
-    columns : [Column; 2],
+    columns : [Column; 3],
     column_labels: Vec<Arc<Label>>,
     window: Window,
     window_width: u32,
@@ -95,6 +95,11 @@ impl TaskManager {
                     name: "PID",
                     x: 0,
                     width: 48,
+                },
+                Column {
+                    name: "Program Usage",
+                    x: 0,
+                    width: 150
                 }
             ],
             column_labels: Vec::new(),
@@ -107,14 +112,16 @@ impl TaskManager {
         }
     }
 
-    fn resized_columns(&self) -> [Column; 2] {
+    fn resized_columns(&self) -> [Column; 3] {
         let mut columns = self.columns.clone();
         columns[0].width = cmp::max(
             columns[0].width,
             self.window_width as i32
                 - columns[1].width
+                - columns[2].width
         );
         columns[1].x = columns[0].x + columns[0].width;
+        columns[2].x = columns[1].x + columns[1].width;
         columns
     }
 
@@ -141,6 +148,11 @@ impl TaskManager {
 
             label = Label::new();
             label.position(columns[1].x, 0).size(w, ITEM_SIZE as u32).text(process.pid.clone());
+            label.bg.set(Color::rgba(255, 255, 255, 0));
+            entry.add(&label);
+
+            label = Label::new();
+            label.position(columns[2].x, 0).size(w, ITEM_SIZE as u32).text(process.mem.clone());
             label.bg.set(Color::rgba(255, 255, 255, 0));
             entry.add(&label);
 
@@ -209,7 +221,6 @@ impl TaskManager {
                 }
                 self.redraw();
             }
-
             self.window.draw_if_needed();
         }
     }
@@ -253,7 +264,7 @@ fn kill_pid(pid: &String) {
 
 #[cfg(not(target_os="redox"))]
 fn kill_pid(pid: &String) {
-    println!("Not implemented on redox. Killed pid: {}", pid);
+    println!("Only implemented on redox. Killed pid: {}", pid);
 }
 
 fn main(){
