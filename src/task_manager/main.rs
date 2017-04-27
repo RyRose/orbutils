@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 extern crate orbclient;
 extern crate orbtk;
+extern crate orbimage;
 
 use std::fs;
 use std::io::Read;
@@ -11,7 +12,13 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 use std::time::Duration;
 use std::thread;
 use orbclient::{Color, Renderer, WindowFlag};
-use orbtk::{Action, Menu, Point, Rect, List, Entry, Label, Separator, TextBox, Window, Button};
+use orbtk::{Action, Event, Menu, Point, Rect, List, Entry, Label, Separator, TextBox, Window, Button};
+use std::path::Path;
+use orbtk::widgets::Widget;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+
 use orbtk::traits::{Click, Place, Resize, Text};
 
 use std::sync::Arc;
@@ -221,6 +228,7 @@ impl TaskManager {
                 }
                 self.redraw();
             }
+
             self.window.draw_if_needed();
         }
     }
@@ -270,4 +278,56 @@ fn kill_pid(pid: &String) {
 fn main(){
     let mut task_manager = TaskManager::new();
     task_manager.main();
+}
+
+pub struct Graph {
+    pub rect: Cell<Rect>,
+    pub image: RefCell<orbimage::Image>,
+}
+
+impl Graph {
+    pub fn new(width: u32, height: u32) -> Arc<Self> {
+        Self::from_image(orbimage::Image::new(width, height))
+    }
+
+    pub fn from_color(width: u32, height: u32, color: Color) -> Arc<Self> {
+        Self::from_image(orbimage::Image::from_color(width, height, color))
+    }
+
+    pub fn from_image(image: orbimage::Image) -> Arc<Self> {
+        Arc::new(Graph {
+            rect: Cell::new(Rect::new(0, 0, image.width(), image.height())),
+            image: RefCell::new(image),
+        })
+    }
+
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Arc<Self>, String> {
+        Ok(Self::from_image(orbimage::Image::from_path(path)?))
+    }
+}
+
+impl Place for Graph {}
+
+impl Widget for Graph {
+    fn rect(&self) -> &Cell<Rect> {
+        &self.rect
+    }
+
+    fn draw(&self, renderer: &mut Renderer, _focused: bool) {
+        let rect = self.rect.get();
+        let image = self.image.borrow();
+        renderer.image(rect.x, rect.y, image.width(), image.height(), image.data());
+    }
+
+    fn event(&self, event: Event, focused: bool, redraw: &mut bool) -> bool {
+        match event {
+            Event::Text { c } => {print!("{}\n",c);}
+            _ => {
+                println!("Another event transpires.");
+            }
+        }
+
+        //focused
+        false
+    }
 }
