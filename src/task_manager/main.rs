@@ -228,7 +228,6 @@ impl TaskManager {
                 }
                 self.redraw();
             }
-
             self.window.draw_if_needed();
         }
     }
@@ -330,4 +329,25 @@ impl Widget for Graph {
         //focused
         false
     }
+}
+// Sums all of the memory values.
+fn sum_Memory(processes: &Vec<ProcessInfo>) -> usize {
+    let mut total = 0;    
+    for process in processes.into_iter(){
+        total += mem_Converter(process.mem.clone());
+    }
+    total
+}
+// Converts all memory values into MB
+fn mem_Converter(s : String) -> usize{
+    let mut temp_strings: Vec<&str> = s.trim().split(" ").collect();
+    let value = temp_strings[0].parse::<usize>().unwrap();
+    let multiple = match temp_strings[1] {
+        "B" => 1,
+        "KB" => 1024,
+        "MB" => 1024 * 1024,
+        "GB" => 1024 * 1024 * 1024,
+        _ => panic!("AAAH, can't parse tag"),
+    };
+    value * multiple
 }
