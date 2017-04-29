@@ -275,13 +275,55 @@ fn kill_pid(pid: &String) {
 }
 
 fn main(){
+    /*
+    thread::spawn(move || {
+        let graph_viewer = GraphViewer::new();
+        graph_viewer.main();
+    }); */
+    let graph_viewer = GraphViewer::new();
+    graph_viewer.main();
+
+    /*
     let mut task_manager = TaskManager::new();
-    task_manager.main();
+    task_manager.main(); */
 }
 
-pub struct Graph {
+struct GraphViewer {
+    window: Window,
+    window_width: u32,
+    window_height: u32,
+    graph : Arc<Graph>
+}
+
+impl GraphViewer {
+
+    pub fn new() -> Self {
+        let title = "Task Manager - Web Viewer";
+        let (width, height) = (100, 100);
+
+        let window = Window::new(Rect::new(5, 50, width, height), &title);
+        let graph = Graph::from_color(width, height, Color::rgb(255, 255, 255));
+        window.add(&graph);
+        GraphViewer {
+            window : window,
+            graph : graph,
+            window_width : width,
+            window_height : height
+        }
+    }
+
+    pub fn main(mut self) {
+        while self.window.running.get() {
+            self.window.step();
+            self.window.draw_if_needed();
+        }
+    }
+}
+
+struct Graph {
     pub rect: Cell<Rect>,
     pub image: RefCell<orbimage::Image>,
+    pub mem_usage : Vec<usize>
 }
 
 impl Graph {
@@ -297,11 +339,17 @@ impl Graph {
         Arc::new(Graph {
             rect: Cell::new(Rect::new(0, 0, image.width(), image.height())),
             image: RefCell::new(image),
+            mem_usage : vec![]
         })
     }
 
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Arc<Self>, String> {
         Ok(Self::from_image(orbimage::Image::from_path(path)?))
+    }
+
+    fn draw_path(&self, prev : Point, cur : Point) {
+        let mut image = self.image.borrow_mut();
+        image.line(prev.x, prev.y, cur.x, cur.y, Color::rgb(0, 0, 0));
     }
 }
 
@@ -318,29 +366,29 @@ impl Widget for Graph {
         renderer.image(rect.x, rect.y, image.width(), image.height(), image.data());
     }
 
-    fn event(&self, event: Event, focused: bool, redraw: &mut bool) -> bool {
+    fn event(&self, event: Event, _: bool, _: &mut bool) -> bool {
         match event {
-            Event::Text { c } => {print!("{}\n",c);}
             _ => {
-                println!("Another event transpires.");
+                self.draw_path(Point::new(10, 10), Point::new(80, 80));
             }
         }
 
-        //focused
-        false
+        true
     }
 }
+
 // Sums all of the memory values.
-fn sum_Memory(processes: &Vec<ProcessInfo>) -> usize {
+fn sum_memory(processes: &Vec<ProcessInfo>) -> usize {
     let mut total = 0;    
     for process in processes.into_iter(){
-        total += mem_Converter(process.mem.clone());
+        total += mem_converter(process.mem.clone());
     }
     total
 }
+
 // Converts all memory values into MB
-fn mem_Converter(s : String) -> usize{
-    let mut temp_strings: Vec<&str> = s.trim().split(" ").collect();
+fn mem_converter(s : String) -> usize{
+    let temp_strings: Vec<&str> = s.trim().split(" ").collect();
     let value = temp_strings[0].parse::<usize>().unwrap();
     let multiple = match temp_strings[1] {
         "B" => 1,
