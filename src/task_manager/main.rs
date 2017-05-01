@@ -21,6 +21,7 @@ use std::rc::Rc;
 use orbtk::traits::{Click, Place, Resize, Text};
 use std::sync::Arc;
 use std::{cmp};
+use orbtk::theme::{LABEL_BACKGROUND, LABEL_BORDER, LABEL_FOREGROUND};
 
 #[cfg(target_os = "redox")]
 extern crate syscall;
@@ -67,9 +68,9 @@ struct TaskManager {
     window: Window,
     window_width: u32,
     window_height: u32,
-    list_widget_index: Option<usize>,
     tx: Sender<TaskManagerCommand>,
     rx: Receiver<TaskManagerCommand>,
+    list_widget_index : Option<usize>
 }
 
 impl TaskManager {
@@ -110,9 +111,9 @@ impl TaskManager {
             window: window,
             window_width: width as u32,
             window_height: height as u32,
-            list_widget_index : None,
             tx : tx,
-            rx : rx
+            rx : rx,
+            list_widget_index : None
         }
     }
 
@@ -219,7 +220,6 @@ impl TaskManager {
                         self.window_height = height;
                     },
                     TaskManagerCommand::Update(processes) => {
-                        println!("update");
                         self.processes = processes;
                     }
                 }
@@ -271,18 +271,21 @@ fn kill_pid(pid: &String) {
     println!("Only implemented on redox. Killed pid: {}", pid);
 }
 
+#[cfg(target_os="redox")]
 fn main(){
-    /*
     thread::spawn(move || {
         let graph_viewer = GraphViewer::new();
         graph_viewer.main();
-    }); */
-    let graph_viewer = GraphViewer::new();
-    graph_viewer.main();
+    });
 
-    /*
     let mut task_manager = TaskManager::new();
-    task_manager.main(); */
+    task_manager.main();
+}
+
+#[cfg(not(target_os="redox"))]
+fn main() {
+    let mut task_manager = TaskManager::new();
+    task_manager.main();
 }
 
 enum GraphCommand {
@@ -306,10 +309,25 @@ impl GraphViewer {
         let title = "Task Manager - Graph Viewer";
         let (width, height) = (300, 300);
         let (tx, rx) = channel();
+
+        let (graph1_x, graph1_y) = (0, 0);
+        let (graph1_w, graph1_h) = (width, height);
+
         let window = Window::new(Rect::new(10, 30, width, height), &title);
-        let graph = LineGraph::from_color(0, 0, width, height, Color::rgb(255, 255, 255));
-        graph.plot(vec![10, 20, 30, 40, 30, 20, 30], 50);
+        let graph = LineGraph::from_color(graph1_x, graph1_y, width, height, LABEL_BACKGROUND);
+        // graph.plot(vec![0, 10, 20, 30, 40, 50], 500);
+        let xlabel = Label::new();
+        xlabel.text("Time")
+              .position(graph1_x + graph1_w as i32 - 50, graph1_y + graph1_h as i32 - 20)
+              .size(40, 16);
+        let title = Label::new();
+        title.text("Memory Usage")
+            .position(graph1_x + (graph1_w / 3) as i32, graph1_y + 10)
+            .size (100, 16);
         window.add(&graph);
+        window.add(&xlabel);
+        window.add(&title);
+
         let points: Vec<i32> = Vec::new();
         GraphViewer {
             window : window,
@@ -318,7 +336,7 @@ impl GraphViewer {
             window_height : height,
             points : points,
             // Change pointsKept to change the amount of points in the graph
-            pointsKept : 3,
+            pointsKept : 10,
             tx : tx,
             rx : rx,
             max: get_memory_usage().2,
@@ -334,8 +352,6 @@ impl GraphViewer {
             }
         });
 
-        // self.redraw();
-
         while self.window.running.get() {
             self.window.step();
 
@@ -346,12 +362,11 @@ impl GraphViewer {
                     //     self.window_height = height;
                     // },
                     GraphCommand::Update(true) => {
-                        println!("update");
-
                         self.update();
                     },
                     _ => (),
                 }
+                self.window.needs_redraw();
             }
             self.window.draw_if_needed();
         }
@@ -359,17 +374,14 @@ impl GraphViewer {
     fn update(&mut self){
         self.updatePoints();
         self.graph.plot(self.points.clone(), self.max.clone());
-        println!("{:?}, {}", self.points, self.max);
     }
+
     fn updatePoints(&mut self){
         let (free,used,size) = get_memory_usage();
         if self.points.len() > self.pointsKept {
             let _ = self.points.remove(0);
         }
         self.points.push(used);
-        if used > self.max {
-            self.max = used;
-        }
     }
 
 
@@ -416,6 +428,7 @@ impl LineGraph {
         image.line(from.x, from.y, to.x, to.y, LINE_COLOR);
     }
 
+    /// Draws the little notches that line up to each data point.
     fn draw_notch(&self, x : i32) {
         let (_, y, _, height) = self.rect();
         let bot = Point { x : x, y : height + NOTCH_HEIGHT / 2};
@@ -423,6 +436,7 @@ impl LineGraph {
         self.draw_path(&bot, &top);
     }
 
+    /// Draws the box around the graph.
     fn draw_box(&self) {
         let (x, y, width, height) = self.rect();
         let top_left = Point { x : x, y : y};
@@ -447,36 +461,37 @@ impl LineGraph {
         for i in 0..(points.len() - 1) {
             self.draw_path(&points[i], &points[i + 1]);
         }
-        println!("Points: {:?}", points);
+
         for point in points {
             self.draw_notch(point.x);
         }
 
     }
 
+    /// Returns the rectangle representing the graph.
     fn rect(&self) -> (i32, i32, i32, i32) {
         let rect = self.rect.get();
         (BORDER, BORDER, rect.width as i32 - BORDER, rect.height as i32 - BORDER)
     }
 
+    /// Clears everything on the graph.
     fn reset(&self) {
         let (x, y, width, height) = self.rect();
         let mut image = self.image.borrow_mut();
-        image.clear();
         *image = orbimage::Image::from_color(width as u32 + BORDER as u32, height as u32 + BORDER as u32, self.background_color);
     }
 
     /// Converts the y-values to points
     fn translate_ys(&self, ys : Vec<i32>, ymax : i32) -> Vec<Point> {
-        let (x, y, width, height) = self.rect();
+        let (window_x, window_y, width, height) = self.rect();
 
         let mut points : Vec<Point> = Vec::new();
         let length = ys.len() as i32;
 
         for (i, y) in ys.into_iter().enumerate() {
             points.push( Point {
-                x : x + (width / length) * (i as i32),
-                y : y + (((y as f32) / (ymax as f32)) * (height as f32)) as i32,
+                x : window_x + (width / length) * (i as i32),
+                y : ((height as f64) - (((y as f64) / (ymax as f64)) * ((height - window_y) as f64))) as i32,
             });
         }
 
@@ -531,5 +546,5 @@ fn get_memory_usage() -> (i32, i32, i32) {
 
 #[cfg(not(target_os = "redox"))]
 fn get_memory_usage() -> (i32, i32, i32) {
-    (1000, 2000, 3000)
+    (5, 10, 15)
 }
