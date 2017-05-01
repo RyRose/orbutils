@@ -1,4 +1,5 @@
 // #![deny(warnings)]
+#![feature(const_fn)]
 
 use std::str::FromStr;
 
@@ -298,7 +299,7 @@ impl GraphViewer {
         let (width, height) = (300, 300);
 
         let window = Window::new(Rect::new(10, 30, width, height), &title);
-        let graph = LineGraph::from_color(10, 10, width, height, Color::rgb(255, 255, 255));
+        let graph = LineGraph::from_color(0, 0, width, height, Color::rgb(255, 255, 255));
         graph.plot(vec![10, 20, 30, 40, 30, 20, 30], 50);
         window.add(&graph);
         GraphViewer {
@@ -320,58 +321,105 @@ impl GraphViewer {
 /// Orbital Widget for representing a graph.
 struct LineGraph {
     rect: Cell<Rect>,
-    image: RefCell<orbimage::Image>
+    image: RefCell<orbimage::Image>,
+    background_color : Color
 }
+
+const NOTCH_HEIGHT : i32 = 20;
+const LINE_COLOR : Color = Color::rgb(0, 0, 0);
+const BORDER : i32 = 30;
 
 impl LineGraph {
 
     /// Creates a new graph with specified width and height in pixels.
     /// Taken from here: https://github.com/redox-os/orbtk/blob/master/src/widgets/image.rs
     pub fn new(x: i32, y: i32, width: u32, height: u32) -> Arc<Self> {
-        Self::from_image(x, y, orbimage::Image::new(width, height))
+        Self::from_image(x, y, orbimage::Image::new(width, height), Color::rgb(255, 255, 255))
     }
 
     /// Creates a new graph with the specified background color.
     /// Taken from here: https://github.com/redox-os/orbtk/blob/master/src/widgets/image.rs
     pub fn from_color(x: i32, y: i32, width: u32, height: u32, color: Color) -> Arc<Self> {
-        Self::from_image(x, y, orbimage::Image::from_color(width, height, color))
+        Self::from_image(x, y, orbimage::Image::from_color(width, height, color), color)
     }
 
     /// Creates a new graph with provided background image.
     /// Taken from here: https://github.com/redox-os/orbtk/blob/master/src/widgets/image.rs
-    pub fn from_image(x: i32, y: i32, image: orbimage::Image) -> Arc<Self> {
+    pub fn from_image(x: i32, y: i32, image: orbimage::Image, color : Color) -> Arc<Self> {
         Arc::new(LineGraph {
             rect: Cell::new(Rect::new(x, y, image.width(), image.height())),
-            image: RefCell::new(image)
+            image: RefCell::new(image),
+            background_color : color
         })
     }
 
     /// Draws a black line segment from "from" to "to."
     fn draw_path(&self, from : &Point, to : &Point) {
         let mut image = self.image.borrow_mut();
-        image.line(from.x, from.y, to.x, to.y, Color::rgb(0, 0, 0));
+        image.line(from.x, from.y, to.x, to.y, LINE_COLOR);
+    }
+
+    fn draw_notch(&self, x : i32) {
+        let (_, y, _, height) = self.rect();
+        let bot = Point { x : x, y : height + NOTCH_HEIGHT / 2};
+        let top = Point { x : x, y : height - NOTCH_HEIGHT / 2};
+        self.draw_path(&bot, &top);
+    }
+
+    fn draw_box(&self) {
+        let (x, y, width, height) = self.rect();
+        let top_left = Point { x : x, y : y};
+        let top_right = Point {x : width,  y : y};
+        let bot_left = Point {x : x, y : height};
+        let bot_right = Point {x : width, y : height};
+        self.draw_path(&top_left, &top_right);
+        self.draw_path(&top_right, &bot_right);
+        self.draw_path(&bot_right, &bot_left);
+        self.draw_path(&bot_left, &top_left);
     }
 
     /// Plots the y-values on the graph.
     pub fn plot(&self, ys : Vec<i32>, ymax : i32) {
+        self.reset();
+
+        let (_, _, width, height) = self.rect();
+
+        self.draw_box();
+
         let points = self.translate_ys(ys, ymax);
         for i in 0..(points.len() - 1) {
             self.draw_path(&points[i], &points[i + 1]);
         }
+
+        for point in points {
+            self.draw_notch(point.x);
+        }
+
+    }
+
+    fn rect(&self) -> (i32, i32, i32, i32) {
+        let rect = self.rect.get();
+        (BORDER, BORDER, rect.width as i32 - BORDER, rect.height as i32 - BORDER)
+    }
+
+    fn reset(&self) {
+        let (x, y, width, height) = self.rect();
+        let mut image = self.image.borrow_mut();
+        image.clear();
+        *image = orbimage::Image::from_color(width as u32 + BORDER as u32, height as u32 + BORDER as u32, self.background_color);
     }
 
     /// Converts the y-values to points
     fn translate_ys(&self, ys : Vec<i32>, ymax : i32) -> Vec<Point> {
-        let image = self.image.borrow();
-        let (width, height) = (image.width() as i32, image.height() as i32);
+        let (x, y, width, height) = self.rect();
+
         let mut points : Vec<Point> = Vec::new();
         let length = ys.len() as i32;
 
-
         for (i, y) in ys.into_iter().enumerate() {
             points.push( Point {
-                x : (width / length) * (i as i32),
-                y : (((y as f32) / (ymax as f32)) * (height as f32)) as i32,
+                x : x + (width / length) * (i as i32),
+                y : y + (((y as f32) / (ymax as f32)) * (height as f32)) as i32,
             });
         }
 
