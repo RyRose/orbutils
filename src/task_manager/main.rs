@@ -17,12 +17,8 @@ use std::path::Path;
 use orbtk::widgets::Widget;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-
-
 use orbtk::traits::{Click, Place, Resize, Text};
-
 use std::sync::Arc;
-
 use std::{cmp};
 
 #[cfg(target_os = "redox")]
@@ -292,17 +288,18 @@ struct GraphViewer {
     window: Window,
     window_width: u32,
     window_height: u32,
-    graph : Arc<Graph>
+    graph : Arc<LineGraph>
 }
 
 impl GraphViewer {
 
     pub fn new() -> Self {
-        let title = "Task Manager - Web Viewer";
-        let (width, height) = (100, 100);
+        let title = "Task Manager - Graph Viewer";
+        let (width, height) = (300, 300);
 
-        let window = Window::new(Rect::new(5, 50, width, height), &title);
-        let graph = Graph::from_color(width, height, Color::rgb(255, 255, 255));
+        let window = Window::new(Rect::new(10, 30, width, height), &title);
+        let graph = LineGraph::from_color(10, 10, width, height, Color::rgb(255, 255, 255));
+        graph.plot(vec![10, 20, 30, 40, 30, 20, 30], 50);
         window.add(&graph);
         GraphViewer {
             window : window,
@@ -320,82 +317,114 @@ impl GraphViewer {
     }
 }
 
-struct Graph {
-    pub rect: Cell<Rect>,
-    pub image: RefCell<orbimage::Image>,
-    pub mem_usage : Vec<usize>
+/// Orbital Widget for representing a graph.
+struct LineGraph {
+    rect: Cell<Rect>,
+    image: RefCell<orbimage::Image>
 }
 
-impl Graph {
-    pub fn new(width: u32, height: u32) -> Arc<Self> {
-        Self::from_image(orbimage::Image::new(width, height))
+impl LineGraph {
+
+    /// Creates a new graph with specified width and height in pixels.
+    /// Taken from here: https://github.com/redox-os/orbtk/blob/master/src/widgets/image.rs
+    pub fn new(x: i32, y: i32, width: u32, height: u32) -> Arc<Self> {
+        Self::from_image(x, y, orbimage::Image::new(width, height))
     }
 
-    pub fn from_color(width: u32, height: u32, color: Color) -> Arc<Self> {
-        Self::from_image(orbimage::Image::from_color(width, height, color))
+    /// Creates a new graph with the specified background color.
+    /// Taken from here: https://github.com/redox-os/orbtk/blob/master/src/widgets/image.rs
+    pub fn from_color(x: i32, y: i32, width: u32, height: u32, color: Color) -> Arc<Self> {
+        Self::from_image(x, y, orbimage::Image::from_color(width, height, color))
     }
 
-    pub fn from_image(image: orbimage::Image) -> Arc<Self> {
-        Arc::new(Graph {
-            rect: Cell::new(Rect::new(0, 0, image.width(), image.height())),
-            image: RefCell::new(image),
-            mem_usage : vec![]
+    /// Creates a new graph with provided background image.
+    /// Taken from here: https://github.com/redox-os/orbtk/blob/master/src/widgets/image.rs
+    pub fn from_image(x: i32, y: i32, image: orbimage::Image) -> Arc<Self> {
+        Arc::new(LineGraph {
+            rect: Cell::new(Rect::new(x, y, image.width(), image.height())),
+            image: RefCell::new(image)
         })
     }
 
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Arc<Self>, String> {
-        Ok(Self::from_image(orbimage::Image::from_path(path)?))
+    /// Draws a black line segment from "from" to "to."
+    fn draw_path(&self, from : &Point, to : &Point) {
+        let mut image = self.image.borrow_mut();
+        image.line(from.x, from.y, to.x, to.y, Color::rgb(0, 0, 0));
     }
 
-    fn draw_path(&self, prev : Point, cur : Point) {
-        let mut image = self.image.borrow_mut();
-        image.line(prev.x, prev.y, cur.x, cur.y, Color::rgb(0, 0, 0));
+    /// Plots the y-values on the graph.
+    pub fn plot(&self, ys : Vec<i32>, ymax : i32) {
+        let points = self.translate_ys(ys, ymax);
+        for i in 0..(points.len() - 1) {
+            self.draw_path(&points[i], &points[i + 1]);
+        }
     }
+
+    /// Converts the y-values to points
+    fn translate_ys(&self, ys : Vec<i32>, ymax : i32) -> Vec<Point> {
+        let image = self.image.borrow();
+        let (width, height) = (image.width() as i32, image.height() as i32);
+        let mut points : Vec<Point> = Vec::new();
+        let length = ys.len() as i32;
+
+
+        for (i, y) in ys.into_iter().enumerate() {
+            points.push( Point {
+                x : (width / length) * (i as i32),
+                y : (((y as f32) / (ymax as f32)) * (height as f32)) as i32,
+            });
+        }
+
+        points
+    }
+
 }
 
-impl Place for Graph {}
+impl Place for LineGraph {}
 
-impl Widget for Graph {
+impl Widget for LineGraph {
+
+    /// Returns the underlying rect.
+    /// Taken from here: https://github.com/redox-os/orbtk/blob/master/src/widgets/image.rs
     fn rect(&self) -> &Cell<Rect> {
         &self.rect
     }
 
+    /// Draws the underlying image.
+    /// Taken from here: https://github.com/redox-os/orbtk/blob/master/src/widgets/image.rs
     fn draw(&self, renderer: &mut Renderer, _focused: bool) {
         let rect = self.rect.get();
         let image = self.image.borrow();
         renderer.image(rect.x, rect.y, image.width(), image.height(), image.data());
     }
 
-    fn event(&self, event: Event, _: bool, _: &mut bool) -> bool {
-        match event {
-            _ => {
-                self.draw_path(Point::new(10, 10), Point::new(80, 80));
-            }
-        }
-
-        true
+    fn event(&self, _: Event, _: bool, _: &mut bool) -> bool {
+        false
     }
 }
 
-// Sums all of the memory values.
-fn sum_memory(processes: &Vec<ProcessInfo>) -> usize {
-    let mut total = 0;    
-    for process in processes.into_iter(){
-        total += mem_converter(process.mem.clone());
+/// Gets the current free, used, and total memory.
+///
+/// Code taken from here:
+///  https://github.com/redox-os/coreutils/blob/master/src/bin/free.rs
+#[cfg(target_os = "redox")]
+fn get_memory_usage() -> (u64, u64, u64) {
+    use syscall::data::StatVfs;
+
+    let mut stat = StatVfs::default();
+    {
+        let fd = syscall::open("memory:", syscall::O_STAT).unwrap();
+        syscall::fstatvfs(fd, &mut stat).unwrap();
+        let _ = syscall::close(fd);
     }
-    total
+
+    let size = stat.f_blocks * stat.f_bsize as u64;
+    let used = (stat.f_blocks - stat.f_bfree) * stat.f_bsize as u64;
+    let free = stat.f_bavail * stat.f_bsize as u64;
+    (free, used, size)
 }
 
-// Converts all memory values into MB
-fn mem_converter(s : String) -> usize{
-    let temp_strings: Vec<&str> = s.trim().split(" ").collect();
-    let value = temp_strings[0].parse::<usize>().unwrap();
-    let multiple = match temp_strings[1] {
-        "B" => 1,
-        "KB" => 1024,
-        "MB" => 1024 * 1024,
-        "GB" => 1024 * 1024 * 1024,
-        _ => panic!("AAAH, can't parse tag"),
-    };
-    value * multiple
+#[cfg(not(target_os = "redox"))]
+fn get_memory_usage() -> (u64, u64, u64) {
+    (1000, 2000, 3000)
 }
