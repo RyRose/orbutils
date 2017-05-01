@@ -285,11 +285,19 @@ fn main(){
     task_manager.main(); */
 }
 
+enum GraphCommand {
+    Update(bool),
+}
 struct GraphViewer {
     window: Window,
     window_width: u32,
     window_height: u32,
-    graph : Arc<LineGraph>
+    graph : Arc<LineGraph>,
+    points : Vec<i32>,
+    pointsKept : usize,
+    tx: Sender<GraphCommand>,
+    rx: Receiver<GraphCommand>,
+    max: i32,
 }
 
 impl GraphViewer {
@@ -297,25 +305,74 @@ impl GraphViewer {
     pub fn new() -> Self {
         let title = "Task Manager - Graph Viewer";
         let (width, height) = (300, 300);
-
+        let (tx, rx) = channel();
         let window = Window::new(Rect::new(10, 30, width, height), &title);
         let graph = LineGraph::from_color(0, 0, width, height, Color::rgb(255, 255, 255));
         graph.plot(vec![10, 20, 30, 40, 30, 20, 30], 50);
         window.add(&graph);
+        let points: Vec<i32> = Vec::new();
         GraphViewer {
             window : window,
             graph : graph,
             window_width : width,
-            window_height : height
+            window_height : height,
+            points : points,
+            // Change pointsKept to change the amount of points in the graph
+            pointsKept : 3,
+            tx : tx,
+            rx : rx,
+            max: get_memory_usage().2,
         }
     }
 
     pub fn main(mut self) {
+        let tx_refresh = self.tx.clone();
+        thread::spawn(move || {
+            loop {
+                tx_refresh.send(GraphCommand::Update(true)).unwrap();
+                thread::sleep(Duration::new(2, 0));
+            }
+        });
+
+        // self.redraw();
+
         while self.window.running.get() {
             self.window.step();
+
+            while let Ok(event) = self.rx.try_recv() {
+                match event {
+                    // GraphCommand::Resize(width, height) => {
+                    //     self.window_width = width;
+                    //     self.window_height = height;
+                    // },
+                    GraphCommand::Update(true) => {
+                        println!("update");
+
+                        self.update();
+                    },
+                    _ => (),
+                }
+            }
             self.window.draw_if_needed();
         }
     }
+    fn update(&mut self){
+        self.updatePoints();
+        self.graph.plot(self.points.clone(), self.max.clone());
+        println!("{:?}, {}", self.points, self.max);
+    }
+    fn updatePoints(&mut self){
+        let (free,used,size) = get_memory_usage();
+        if self.points.len() > self.pointsKept {
+            let _ = self.points.remove(0);
+        }
+        self.points.push(used);
+        if used > self.max {
+            self.max = used;
+        }
+    }
+
+
 }
 
 /// Orbital Widget for representing a graph.
@@ -390,7 +447,7 @@ impl LineGraph {
         for i in 0..(points.len() - 1) {
             self.draw_path(&points[i], &points[i + 1]);
         }
-
+        println!("Points: {:?}", points);
         for point in points {
             self.draw_notch(point.x);
         }
@@ -456,7 +513,7 @@ impl Widget for LineGraph {
 /// Code taken from here:
 ///  https://github.com/redox-os/coreutils/blob/master/src/bin/free.rs
 #[cfg(target_os = "redox")]
-fn get_memory_usage() -> (u64, u64, u64) {
+fn get_memory_usage() -> (i32, i32, i32) {
     use syscall::data::StatVfs;
 
     let mut stat = StatVfs::default();
@@ -469,10 +526,10 @@ fn get_memory_usage() -> (u64, u64, u64) {
     let size = stat.f_blocks * stat.f_bsize as u64;
     let used = (stat.f_blocks - stat.f_bfree) * stat.f_bsize as u64;
     let free = stat.f_bavail * stat.f_bsize as u64;
-    (free, used, size)
+    (free as i32, used as i32, size as i32)
 }
 
 #[cfg(not(target_os = "redox"))]
-fn get_memory_usage() -> (u64, u64, u64) {
+fn get_memory_usage() -> (i32, i32, i32) {
     (1000, 2000, 3000)
 }
